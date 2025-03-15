@@ -1,5 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:dio/dio.dart';
 import 'package:recipeappfix_task5/controller/recipe_controller.dart';
 import 'package:recipeappfix_task5/models/category_model.dart';
 import 'package:recipeappfix_task5/models/recipe_models.dart';
@@ -7,7 +10,6 @@ import 'package:recipeappfix_task5/services/recipe_service.dart';
 
 class AddRecipePage extends StatefulWidget {
   final RecipeModel? recipe; // Optional recipe for editing mode
-
   const AddRecipePage({Key? key, this.recipe}) : super(key: key);
 
   @override
@@ -18,12 +20,16 @@ class _AddRecipePageState extends State<AddRecipePage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _imageUrlController = TextEditingController();
-
   CategoryModel? _selectedCategory;
   List<CategoryModel> _categories = [];
   bool _isLoading = false;
   bool _isEditMode = false;
+  bool _isUploadingImage = false;
+
+  // Image picker
+  final ImagePicker _picker = ImagePicker();
+  File? _imageFile;
+  String? _imageUrl;
 
   @override
   void initState() {
@@ -35,8 +41,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       _isEditMode = true;
       _titleController.text = widget.recipe!.title;
       _descriptionController.text = widget.recipe!.description;
-      _imageUrlController.text = widget.recipe!.image;
-      // We'll set the selected category when categories are loaded
+      _imageUrl = widget.recipe!.image;
     }
   }
 
@@ -44,7 +49,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
   void dispose() {
     _titleController.dispose();
     _descriptionController.dispose();
-    _imageUrlController.dispose();
     super.dispose();
   }
 
@@ -52,43 +56,119 @@ class _AddRecipePageState extends State<AddRecipePage> {
     setState(() {
       _isLoading = true;
     });
-
     try {
       final RecipeService recipeService = RecipeService();
-      final categoriesJson = await recipeService.getCategories();
-
+      // Use the method to get categories from recipes
+      final categoriesData = await recipeService.getCategoriesFromRecipes();
       setState(() {
-        _categories =
-            categoriesJson
-                .map(
-                  (json) => CategoryModel(
-                    id: json['id'],
-                    name: json['name'],
-                    createdAt: DateTime.parse(json['created_at']),
-                    updatedAt: DateTime.parse(json['updated_at']),
-                  ),
-                )
-                .toList();
-
+        _categories = categoriesData;
         // If in edit mode, find and set the matching category
         if (_isEditMode && widget.recipe != null) {
           _selectedCategory = _categories.firstWhere(
             (category) => category.id == widget.recipe!.categoryId,
-            orElse: () => _categories.first,
+            orElse: () => _categories.isNotEmpty ? _categories.first : null!,
           );
         } else if (_categories.isNotEmpty) {
           _selectedCategory = _categories.first;
         }
-
         _isLoading = false;
       });
+      print("Categories loaded: ${_categories.length}");
+      if (_categories.isNotEmpty) {
+        print("First category: ${_categories.first.name}");
+      }
     } catch (e) {
+      print("Error in _loadCategories: $e");
       setState(() {
         _isLoading = false;
+        // Create a default category if there's an exception
+        if (_categories.isEmpty) {
+          final defaultCategory = CategoryModel(
+            id: 1,
+            name: "Default Category",
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
+          );
+          _categories = [defaultCategory];
+          _selectedCategory = defaultCategory;
+
+          // Show a warning to the user
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Using default category - could not load categories',
+              ),
+            ),
+          );
+        }
       });
+    }
+  }
+
+  // Method to pick image from gallery
+  Future<void> _pickImageFromGallery() async {
+    try {
+      final XFile? pickedFile = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+      if (pickedFile != null) {
+        setState(() {
+          _imageFile = File(pickedFile.path);
+          _imageUrl = null; // Clear previous URL since we have a new file
+        });
+      }
+    } catch (e) {
+      print("Error picking image: $e");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Tidak dapat mengakses galeri: $e')),
+      );
+    }
+  }
+
+  // Method to upload image to server
+  Future<String?> _uploadImage() async {
+    if (_imageFile == null)
+      return _imageUrl; // Return existing URL if no new image
+
+    setState(() {
+      _isUploadingImage = true;
+    });
+
+    try {
+      // Create form data
+      final formData = FormData.fromMap({
+        'image': await MultipartFile.fromFile(
+          _imageFile!.path,
+          filename: 'image.jpg',
+        ),
+      });
+
+      // Upload image
+      final Dio dio = Dio();
+      final response = await dio.post(
+        'https://tokopaedi.arfani.my.id/api/upload',
+        data: formData,
+      );
+
+      // Check response
+      if (response.statusCode == 200 && response.data != null) {
+        // Extract image URL from response
+        final imageUrl = response.data['url'] as String;
+        return imageUrl;
+      } else {
+        throw Exception('Failed to upload image: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error uploading image: $e');
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to load categories: $e')));
+      ).showSnackBar(SnackBar(content: Text('Failed to upload image: $e')));
+      return null;
+    } finally {
+      setState(() {
+        _isUploadingImage = false;
+      });
     }
   }
 
@@ -101,11 +181,25 @@ class _AddRecipePageState extends State<AddRecipePage> {
         return;
       }
 
+      if (_imageFile == null && _imageUrl == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Please select an image')));
+        return;
+      }
+
       setState(() {
         _isLoading = true;
       });
 
       try {
+        // Upload image if a new one is selected
+        final uploadedImageUrl = await _uploadImage();
+        if (uploadedImageUrl == null && _imageUrl == null) {
+          throw Exception('Failed to get image URL');
+        }
+
+        final imageUrl = uploadedImageUrl ?? _imageUrl!;
         final RecipeProvider recipeProvider = Provider.of<RecipeProvider>(
           context,
           listen: false,
@@ -117,12 +211,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
             id: widget.recipe!.id,
             title: _titleController.text,
             description: _descriptionController.text,
-            image: _imageUrlController.text,
+            image: imageUrl,
             categoryId: _selectedCategory!.id,
             category: _selectedCategory!,
-            createdAt:
-                widget.recipe!.createdAt, // Preserve original creation date
-            updatedAt: DateTime.now(), // Update modification date
+            createdAt: widget.recipe!.createdAt,
+            updatedAt: DateTime.now(),
           );
 
           final success = await recipeProvider.updateRecipe(updatedRecipe);
@@ -139,14 +232,14 @@ class _AddRecipePageState extends State<AddRecipePage> {
         } else {
           // Create new recipe
           final newRecipe = RecipeModel(
-            id: 0, // This will be assigned by the server
+            id: 0,
             title: _titleController.text,
             description: _descriptionController.text,
-            image: _imageUrlController.text,
+            image: imageUrl,
             categoryId: _selectedCategory!.id,
             category: _selectedCategory!,
-            createdAt: DateTime.now(), // Add current date
-            updatedAt: DateTime.now(), // Add current date
+            createdAt: DateTime.now(),
+            updatedAt: DateTime.now(),
           );
 
           final success = await recipeProvider.addRecipe(newRecipe);
@@ -162,6 +255,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
           }
         }
       } catch (e) {
+        print("Error saving recipe: $e");
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -176,113 +270,278 @@ class _AddRecipePageState extends State<AddRecipePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(_isEditMode ? 'Edit Recipe' : 'Add Recipe'),
+        title: Text(_isEditMode ? 'Edit Resep' : 'Tambah Resep'),
         backgroundColor: Colors.blueGrey,
+        titleTextStyle: TextStyle(
+          color: Colors.white,
+          fontSize: 18,
+          fontWeight: FontWeight.bold,
+        ),
+        centerTitle: true,
+        elevation: 1,
       ),
       body:
-          _isLoading
-              ? Center(child: CircularProgressIndicator())
+          _isLoading || _isUploadingImage
+              ? Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(color: Colors.blueGrey),
+                    SizedBox(height: 16),
+                    Text(
+                      _isUploadingImage ? 'Uploading image...' : 'Loading...',
+                    ),
+                  ],
+                ),
+              )
               : SingleChildScrollView(
-                padding: EdgeInsets.all(16),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Title field
-                      TextFormField(
-                        controller: _titleController,
-                        decoration: InputDecoration(
-                          labelText: 'Title',
-                          border: OutlineInputBorder(),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter a title';
-                          }
-                          return null;
-                        },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Recipe image or image picker
+                    GestureDetector(
+                      onTap: _pickImageFromGallery,
+                      child: Container(
+                        height: 250,
+                        width: double.infinity,
+                        color: Colors.grey.shade200,
+                        child:
+                            _imageFile != null || _imageUrl != null
+                                ? ClipRect(
+                                  child:
+                                      _imageFile != null
+                                          ? Image.file(
+                                            _imageFile!,
+                                            fit: BoxFit.cover,
+                                            height: 250,
+                                            width: double.infinity,
+                                          )
+                                          : Image.network(
+                                            _imageUrl!,
+                                            fit: BoxFit.cover,
+                                            height: 250,
+                                            width: double.infinity,
+                                            loadingBuilder: (
+                                              context,
+                                              child,
+                                              loadingProgress,
+                                            ) {
+                                              if (loadingProgress == null)
+                                                return child;
+                                              return Center(
+                                                child: CircularProgressIndicator(
+                                                  value:
+                                                      loadingProgress
+                                                                  .expectedTotalBytes !=
+                                                              null
+                                                          ? loadingProgress
+                                                                  .cumulativeBytesLoaded /
+                                                              loadingProgress
+                                                                  .expectedTotalBytes!
+                                                          : null,
+                                                  color: Colors.blueGrey,
+                                                ),
+                                              );
+                                            },
+                                            errorBuilder: (
+                                              context,
+                                              error,
+                                              stackTrace,
+                                            ) {
+                                              return Center(
+                                                child: Icon(
+                                                  Icons.error_outline,
+                                                  color: Colors.red,
+                                                  size: 40,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                )
+                                : Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.add_photo_alternate_outlined,
+                                        size: 64,
+                                        color: Colors.blueGrey,
+                                      ),
+                                      SizedBox(height: 12),
+                                      Text(
+                                        'Tambah gambar resep',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.blueGrey,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                       ),
-                      SizedBox(height: 16),
+                    ),
 
-                      // Description field
-                      TextFormField(
-                        controller: _descriptionController,
-                        decoration: InputDecoration(
-                          labelText: 'Description',
-                          border: OutlineInputBorder(),
-                        ),
-                        maxLines: 3,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter a description';
-                          }
-                          return null;
-                        },
-                      ),
-                      SizedBox(height: 16),
+                    // Form section with recipe details
+                    Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Title field with styling consistent with detail page
+                            Text(
+                              'Nama Resep',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            TextFormField(
+                              controller: _titleController,
+                              decoration: InputDecoration(
+                                hintText: 'Ketik nama resep...',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                    color: Colors.blueGrey,
+                                    width: 2,
+                                  ),
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                              ),
+                              style: TextStyle(fontSize: 16),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Isi nama resep';
+                                }
+                                return null;
+                              },
+                            ),
+                            SizedBox(height: 16),
 
-                      // Image URL field
-                      TextFormField(
-                        controller: _imageUrlController,
-                        decoration: InputDecoration(
-                          labelText: 'Image URL',
-                          border: OutlineInputBorder(),
-                          helperText: 'Enter a valid image URL',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter an image URL';
-                          }
-                          // You can add more validation for URL format if needed
-                          return null;
-                        },
-                      ),
-                      SizedBox(height: 16),
+                            // Category dropdown with styling consistent with detail page
+                            Text(
+                              'Kategori',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            _categories.isEmpty
+                                ? Text(
+                                  "Tidak ada kategori tersedia",
+                                  style: TextStyle(color: Colors.red),
+                                )
+                                : DropdownButtonFormField<CategoryModel>(
+                                  decoration: InputDecoration(
+                                    hintText: 'Pilih Kategori',
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      borderSide: BorderSide(
+                                        color: Colors.blueGrey,
+                                        width: 2,
+                                      ),
+                                    ),
+                                    filled: true,
+                                    fillColor: Colors.grey.shade50,
+                                  ),
+                                  value: _selectedCategory,
+                                  items:
+                                      _categories.map((category) {
+                                        return DropdownMenuItem<CategoryModel>(
+                                          value: category,
+                                          child: Text(category.name),
+                                        );
+                                      }).toList(),
+                                  onChanged: (CategoryModel? newValue) {
+                                    setState(() {
+                                      _selectedCategory = newValue;
+                                    });
+                                  },
+                                ),
+                            SizedBox(height: 16),
 
-                      // Category dropdown
-                      DropdownButtonFormField<CategoryModel>(
-                        decoration: InputDecoration(
-                          labelText: 'Category',
-                          border: OutlineInputBorder(),
-                        ),
-                        value: _selectedCategory,
-                        items:
-                            _categories.map((category) {
-                              return DropdownMenuItem<CategoryModel>(
-                                value: category,
-                                child: Text(category.name),
-                              );
-                            }).toList(),
-                        onChanged: (CategoryModel? newValue) {
-                          setState(() {
-                            _selectedCategory = newValue;
-                          });
-                        },
-                        validator: (value) {
-                          if (value == null) {
-                            return 'Please select a category';
-                          }
-                          return null;
-                        },
-                      ),
-                      SizedBox(height: 24),
+                            // Description field with styling consistent with detail page
+                            Text(
+                              'Deskripsi',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            TextFormField(
+                              controller: _descriptionController,
+                              decoration: InputDecoration(
+                                hintText: 'Ketik deskripsi resep...',
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                  borderSide: BorderSide(
+                                    color: Colors.blueGrey,
+                                    width: 2,
+                                  ),
+                                ),
+                                filled: true,
+                                fillColor: Colors.grey.shade50,
+                              ),
+                              maxLines: 5,
+                              style: TextStyle(fontSize: 16),
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Isi deskripsi terlebih dahulu';
+                                }
+                                return null;
+                              },
+                            ),
+                            SizedBox(height: 24),
 
-                      // Save button
-                      ElevatedButton(
-                        onPressed: _saveRecipe,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blueGrey,
-                          padding: EdgeInsets.symmetric(vertical: 16),
-                        ),
-                        child: Text(
-                          _isEditMode ? 'Update Recipe' : 'Add Recipe',
-                          style: TextStyle(fontSize: 16, color: Colors.white),
+                            // Save button with consistent styling
+                            SizedBox(
+                              width: double.infinity,
+                              height: 50,
+                              child: ElevatedButton(
+                                onPressed: _saveRecipe,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blueGrey,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  elevation: 2,
+                                ),
+                                child: Text(
+                                  _isEditMode ? 'Ubah Resep' : 'Simpan Resep',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
     );

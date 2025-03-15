@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:recipeappfix_task5/models/category_model.dart';
 import 'package:recipeappfix_task5/models/recipe_models.dart';
 import 'package:recipeappfix_task5/services/recipe_service.dart';
 
 class RecipeProvider with ChangeNotifier {
   final RecipeService _recipeService = RecipeService();
   List<RecipeModel> _recipes = [];
+  List<CategoryModel> _categories = [];
   bool _isLoading = false;
+  bool _isCategoriesLoading = false;
 
   List<RecipeModel> get recipes => _recipes;
+  List<CategoryModel> get categories => _categories;
   bool get isLoading => _isLoading;
+  bool get isCategoriesLoading => _isCategoriesLoading;
 
   Future<void> fetchRecipes({int page = 1}) async {
     if (_isLoading) return;
@@ -18,14 +23,36 @@ class RecipeProvider with ChangeNotifier {
     try {
       final fetchedRecipes = await _recipeService.getAllRecipes(page: page);
       _recipes = fetchedRecipes;
+
+      // After fetching recipes, extract categories
+      await fetchCategories();
     } catch (e) {
       print("Error fetching recipes: $e");
       _recipes = [];
     } finally {
-      if (WidgetsBinding.instance.lifecycleState != AppLifecycleState.detached) {
+      if (WidgetsBinding.instance.lifecycleState !=
+          AppLifecycleState.detached) {
         _isLoading = false;
         notifyListeners();
       }
+    }
+  }
+
+  Future<void> fetchCategories() async {
+    if (_isCategoriesLoading) return;
+    _isCategoriesLoading = true;
+    notifyListeners();
+
+    try {
+      final fetchedCategories = await _recipeService.getCategoriesFromRecipes();
+      _categories = fetchedCategories;
+      print("Categories fetched: ${_categories.length}");
+    } catch (e) {
+      print("Error fetching categories: $e");
+      _categories = [];
+    } finally {
+      _isCategoriesLoading = false;
+      notifyListeners();
     }
   }
 

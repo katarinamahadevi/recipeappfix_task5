@@ -1,17 +1,17 @@
 import 'package:dio/dio.dart';
 import 'package:recipeappfix_task5/models/recipe_models.dart';
+import 'package:recipeappfix_task5/models/category_model.dart';
 
 class RecipeService {
   final Dio _dio = Dio();
   final String baseUrl = "https://tokopaedi.arfani.my.id/api/recipes";
+  final String categoriesUrl = "https://tokopaedi.arfani.my.id/api/categories";
 
   Future<List<RecipeModel>> getAllRecipes({int page = 1}) async {
     try {
       final response = await _dio.get("$baseUrl?page=$page");
-      // Debugging: Print response before processing
       print("API Response: ${response.data}");
       
-      // Extract recipe list from JSON response
       if (response.data is Map<String, dynamic> &&
           response.data.containsKey("data") &&
           response.data["data"] is Map<String, dynamic> &&
@@ -22,7 +22,31 @@ class RecipeService {
         throw Exception("Invalid response format");
       }
     } catch (e) {
+      print("Error fetching recipes: $e");
       throw Exception("Failed to load recipes: $e");
+    }
+  }
+  
+  // Method to fetch categories using the recipe data
+  // This extracts categories from recipe data we already have
+  Future<List<CategoryModel>> getCategoriesFromRecipes() async {
+    try {
+      // Get recipes first
+      final recipes = await getAllRecipes();
+      
+      // Extract unique categories
+      final Map<int, CategoryModel> uniqueCategories = {};
+      for (var recipe in recipes) {
+        if (!uniqueCategories.containsKey(recipe.category.id)) {
+          uniqueCategories[recipe.category.id] = recipe.category;
+        }
+      }
+      
+      print("Categories extracted from recipes: ${uniqueCategories.length}");
+      return uniqueCategories.values.toList();
+    } catch (e) {
+      print("Error extracting categories: $e");
+      throw Exception("Failed to extract categories: $e");
     }
   }
 
@@ -70,21 +94,6 @@ class RecipeService {
       return response.statusCode == 200;
     } catch (e) {
       throw Exception("Failed to delete recipe: $e");
-    }
-  }
-
-  // Add method to get categories
-  Future<List<Map<String, dynamic>>> getCategories() async {
-    try {
-      final response = await _dio.get("https://tokopaedi.arfani.my.id/api/categories");
-      if (response.data is Map<String, dynamic> && 
-          response.data.containsKey("data")) {
-        return List<Map<String, dynamic>>.from(response.data["data"]);
-      } else {
-        throw Exception("Invalid categories response format");
-      }
-    } catch (e) {
-      throw Exception("Failed to load categories: $e");
     }
   }
 }

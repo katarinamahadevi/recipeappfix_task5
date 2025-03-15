@@ -13,12 +13,13 @@ class DetailRecipePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Recipe Details'),
+        title: Text('Detail Resep'),
         backgroundColor: Colors.blueGrey,
         actions: [
           // Edit button
           IconButton(
             icon: Icon(Icons.edit),
+            color: Colors.white,
             onPressed: () {
               Navigator.push(
                 context,
@@ -37,6 +38,7 @@ class DetailRecipePage extends StatelessWidget {
           // Delete button
           IconButton(
             icon: Icon(Icons.delete),
+            color: Colors.white,
             onPressed: () {
               _showDeleteConfirmation(context);
             },
@@ -95,7 +97,7 @@ class DetailRecipePage extends StatelessWidget {
 
                   // Description header
                   Text(
-                    'Description',
+                    'Deskripsi',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 8),
