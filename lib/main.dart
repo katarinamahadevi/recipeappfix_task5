@@ -1,14 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:recipeappfix_task5/controller/recipe_controller.dart';
 import 'package:recipeappfix_task5/pages/homepage.dart';
+// Import lain yang diperlukan
 
 void main() {
   runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -18,10 +20,13 @@ class MyApp extends StatelessWidget {
         title: 'Recipe App',
         theme: ThemeData(
           primarySwatch: Colors.blue,
-          visualDensity: VisualDensity.adaptivePlatformDensity,
+          // Konfigurasi tema lainnya
         ),
-        home: const Homepage(),
-        debugShowCheckedModeBanner: false,
+        // Tambahkan localizationsDelegates untuk Flutter Quill
+        localizationsDelegates: [
+          FlutterQuillLocalizations.delegate,
+        ],
+        home: const Homepage(), // Halaman awal aplikasi Anda
       ),
     );
   }

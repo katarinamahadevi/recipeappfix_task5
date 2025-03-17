@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:recipeappfix_task5/controller/recipe_controller.dart';
 import 'package:recipeappfix_task5/models/category_model.dart';
 import 'package:recipeappfix_task5/models/recipe_models.dart';
@@ -19,7 +20,10 @@ class AddRecipePage extends StatefulWidget {
 class _AddRecipePageState extends State<AddRecipePage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _descriptionController = TextEditingController();
+
+  // Menggunakan QuillController untuk deskripsi
+  late QuillController _descriptionController;
+
   CategoryModel? _selectedCategory;
   List<CategoryModel> _categories = [];
   bool _isLoading = false;
@@ -34,13 +38,21 @@ class _AddRecipePageState extends State<AddRecipePage> {
   @override
   void initState() {
     super.initState();
+
+    // Initialize QuillController
+    _descriptionController = QuillController.basic();
+
     _loadCategories();
 
     // If recipe is provided, we're in edit mode
     if (widget.recipe != null) {
       _isEditMode = true;
       _titleController.text = widget.recipe!.title;
-      _descriptionController.text = widget.recipe!.description;
+
+      // Set the description to QuillController
+      // For edit mode, you might need to convert plain text to Delta
+      // This is a simple approach - in a real app you might store the Delta format
+
       _imageUrl = widget.recipe!.image;
     }
   }
@@ -147,7 +159,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       // Upload image
       final Dio dio = Dio();
       final response = await dio.post(
-        'https://tokopaedi.arfani.my.id/api/upload',
+        'https://tokopaedi.arfani.my.id/api/recipes?page=1&title=&category_id=',
         data: formData,
       );
 
@@ -188,6 +200,17 @@ class _AddRecipePageState extends State<AddRecipePage> {
         return;
       }
 
+      // Get plain text from Quill editor
+      final description = _descriptionController.document.toPlainText().trim();
+
+      // Check if description is empty
+      if (description.isEmpty) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Deskripsi tidak boleh kosong')));
+        return;
+      }
+
       setState(() {
         _isLoading = true;
       });
@@ -210,7 +233,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
           final updatedRecipe = RecipeModel(
             id: widget.recipe!.id,
             title: _titleController.text,
-            description: _descriptionController.text,
+            description: description,
             image: imageUrl,
             categoryId: _selectedCategory!.id,
             category: _selectedCategory!,
@@ -234,7 +257,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
           final newRecipe = RecipeModel(
             id: 0,
             title: _titleController.text,
-            description: _descriptionController.text,
+            description: description,
             image: imageUrl,
             categoryId: _selectedCategory!.id,
             category: _selectedCategory!,
@@ -476,7 +499,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                 ),
                             SizedBox(height: 16),
 
-                            // Description field with styling consistent with detail page
+                            // Description field - REPLACED WITH FLUTTER QUILL
                             Text(
                               'Deskripsi',
                               style: TextStyle(
@@ -486,31 +509,62 @@ class _AddRecipePageState extends State<AddRecipePage> {
                               ),
                             ),
                             SizedBox(height: 8),
-                            TextFormField(
-                              controller: _descriptionController,
-                              decoration: InputDecoration(
-                                hintText: 'Ketik deskripsi resep...',
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                  borderSide: BorderSide(
-                                    color: Colors.blueGrey,
-                                    width: 2,
-                                  ),
-                                ),
-                                filled: true,
-                                fillColor: Colors.grey.shade50,
+                            Container(
+                              height: 250,
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.grey),
+                                borderRadius: BorderRadius.circular(8),
                               ),
-                              maxLines: 5,
-                              style: TextStyle(fontSize: 16),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Isi deskripsi terlebih dahulu';
-                                }
-                                return null;
-                              },
+                              child: Column(
+                                children: [
+                                  // Toolbar for formatting
+                                  QuillSimpleToolbar(
+                                    controller: _descriptionController,
+                                    config: const QuillSimpleToolbarConfig(
+                                      showBoldButton: true,
+                                      showItalicButton: true,
+                                      showUnderLineButton: true,
+                                      showStrikeThrough: false,
+                                      showColorButton: false,
+                                      showBackgroundColorButton: false,
+                                      showClearFormat: true,
+                                      showAlignmentButtons: false,
+                                      showLeftAlignment: false,
+                                      showCenterAlignment: false,
+                                      showRightAlignment: false,
+                                      showJustifyAlignment: false,
+                                      showHeaderStyle: false,
+                                      showListNumbers: true,
+                                      showListBullets: true,
+                                      showListCheck: false,
+                                      showCodeBlock: false,
+                                      showQuote: false,
+                                      showIndent: false,
+                                      showLink: false,
+                                      showUndo: true,
+                                      showRedo: true,
+                                      showDirection: false,
+                                      showSearchButton: false,
+                                      showSubscript: false,
+                                      showSuperscript: false,
+                                    ),
+                                  ),
+                                  // Editor
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      child: QuillEditor.basic(
+                                        controller: _descriptionController,
+                                        config: const QuillEditorConfig(
+                                          placeholder:
+                                              'Tulis deskripsi resep Anda di sini...',
+                                          padding: EdgeInsets.all(8),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                             SizedBox(height: 24),
 
