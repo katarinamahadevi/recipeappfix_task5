@@ -11,6 +11,7 @@ class RecipeModel {
   final CategoryModel category;
 
   RecipeModel({
+    
     required this.id,
     required this.title,
     required this.description,

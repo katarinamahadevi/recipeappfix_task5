@@ -20,7 +20,6 @@ class _HomepageState extends State<Homepage> {
   @override
   void initState() {
     super.initState();
-    // Ensure fetchRecipes() isn't called while the widget is being built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<RecipeProvider>(context, listen: false).fetchRecipes();
     });
@@ -38,12 +37,10 @@ class _HomepageState extends State<Homepage> {
       ),
       body: Column(
         children: [
-          // Search Bar & Filter Button
           Padding(
             padding: const EdgeInsets.all(10.0),
             child: Row(
               children: [
-                // Search Bar
                 Expanded(
                   child: TextField(
                     onChanged: (value) {
@@ -61,7 +58,6 @@ class _HomepageState extends State<Homepage> {
                   ),
                 ),
                 SizedBox(width: 10),
-                // Filter Button
                 IconButton(
                   icon: Icon(Icons.filter_list, color: Colors.blueGrey),
                   onPressed: () {
@@ -73,8 +69,6 @@ class _HomepageState extends State<Homepage> {
               ],
             ),
           ),
-
-          // Filter Options
           if (showFilterOptions)
             Consumer<RecipeProvider>(
               builder: (context, recipeProvider, _) {
@@ -88,8 +82,6 @@ class _HomepageState extends State<Homepage> {
                     ),
                   );
                 }
-
-                // Build category filter chips
                 return Container(
                   padding: EdgeInsets.symmetric(horizontal: 40, vertical: 5),
                   decoration: BoxDecoration(
@@ -113,7 +105,6 @@ class _HomepageState extends State<Homepage> {
                         spacing: 8.0,
                         runSpacing: 8.0,
                         children: [
-                          // Add "All" filter option
                           FilterChip(
                             label: Text("Semua"),
                             selected: selectedCategory == null,
@@ -283,7 +274,6 @@ class _HomepageState extends State<Homepage> {
             context,
             MaterialPageRoute(builder: (context) => AddRecipePage()),
           ).then((_) {
-            // Refresh recipes when returning from add page
             Provider.of<RecipeProvider>(context, listen: false).fetchRecipes();
           });
         },

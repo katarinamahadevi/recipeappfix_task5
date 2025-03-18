@@ -90,26 +90,18 @@ class DetailRecipePage extends StatelessWidget {
                     ],
                   ),
                   SizedBox(height: 16),
-
-                  // Divider
                   Divider(thickness: 1),
                   SizedBox(height: 16),
-
-                  // Description header
                   Text(
                     'Deskripsi',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
                   SizedBox(height: 8),
-
-                  // Description text
                   Text(
                     recipe.description,
                     style: TextStyle(fontSize: 16, height: 1.5),
                   ),
                   SizedBox(height: 24),
-
-                  // Added date
                   Row(
                     children: [
                       Icon(Icons.calendar_today, size: 16, color: Colors.grey),
@@ -121,8 +113,6 @@ class DetailRecipePage extends StatelessWidget {
                     ],
                   ),
                   SizedBox(height: 4),
-
-                  // Last updated
                   Row(
                     children: [
                       Icon(Icons.update, size: 16, color: Colors.grey),
@@ -142,12 +132,10 @@ class DetailRecipePage extends StatelessWidget {
     );
   }
 
-  // Format DateTime to a readable string
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  // Show delete confirmation dialog
   void _showDeleteConfirmation(BuildContext context) {
     showDialog(
       context: context,
@@ -175,7 +163,6 @@ class DetailRecipePage extends StatelessWidget {
     );
   }
 
-  // Delete the recipe
   void _deleteRecipe(BuildContext context) {
     final recipeProvider = Provider.of<RecipeProvider>(context, listen: false);
 
@@ -196,20 +183,16 @@ class DetailRecipePage extends StatelessWidget {
       },
     );
 
-    // Delete the recipe
     recipeProvider.deleteRecipe(recipe.id).then((success) {
-      // Close loading dialog
       Navigator.of(context).pop();
 
       if (success) {
-        // Show success message
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Recipe deleted successfully')));
         // Return to previous screen
         Navigator.of(context).pop();
       } else {
-        // Show error message
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Failed to delete recipe')));

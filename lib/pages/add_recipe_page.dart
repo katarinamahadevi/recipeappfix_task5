@@ -48,11 +48,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
     if (widget.recipe != null) {
       _isEditMode = true;
       _titleController.text = widget.recipe!.title;
-
-      // Set the description to QuillController
-      // For edit mode, you might need to convert plain text to Delta
-      // This is a simple approach - in a real app you might store the Delta format
-
       _imageUrl = widget.recipe!.image;
     }
   }
@@ -70,11 +65,9 @@ class _AddRecipePageState extends State<AddRecipePage> {
     });
     try {
       final RecipeService recipeService = RecipeService();
-      // Use the method to get categories from recipes
       final categoriesData = await recipeService.getCategoriesFromRecipes();
       setState(() {
         _categories = categoriesData;
-        // If in edit mode, find and set the matching category
         if (_isEditMode && widget.recipe != null) {
           _selectedCategory = _categories.firstWhere(
             (category) => category.id == widget.recipe!.categoryId,
@@ -93,7 +86,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
       print("Error in _loadCategories: $e");
       setState(() {
         _isLoading = false;
-        // Create a default category if there's an exception
         if (_categories.isEmpty) {
           final defaultCategory = CategoryModel(
             id: 1,
@@ -103,9 +95,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
           );
           _categories = [defaultCategory];
           _selectedCategory = defaultCategory;
-
-          // Show a warning to the user
           ScaffoldMessenger.of(context).showSnackBar(
+            //warning
             SnackBar(
               content: Text(
                 'Using default category - could not load categories',
@@ -117,7 +108,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
     }
   }
 
-  // Method to pick image from gallery
   Future<void> _pickImageFromGallery() async {
     try {
       final XFile? pickedFile = await _picker.pickImage(
@@ -127,7 +117,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
       if (pickedFile != null) {
         setState(() {
           _imageFile = File(pickedFile.path);
-          _imageUrl = null; // Clear previous URL since we have a new file
+          _imageUrl = null;
         });
       }
     } catch (e) {
@@ -138,155 +128,55 @@ class _AddRecipePageState extends State<AddRecipePage> {
     }
   }
 
-  // Method to upload image to server
   Future<String?> _uploadImage() async {
-    if (_imageFile == null)
-      return _imageUrl; // Return existing URL if no new image
+    if (_imageFile == null) {
+      print('Tidak ada file gambar yang dipilih');
+      return _imageUrl;
+    }
 
     setState(() {
       _isUploadingImage = true;
     });
 
     try {
-      // Create form data
       final formData = FormData.fromMap({
+        'title': _titleController.text,
+        'description': _descriptionController.document.toPlainText().trim(),
+        'category_id': _selectedCategory!.id.toString(),
         'image': await MultipartFile.fromFile(
           _imageFile!.path,
           filename: 'image.jpg',
         ),
       });
 
-      // Upload image
-      final Dio dio = Dio();
+      final Dio dio = Dio(BaseOptions(headers: {'Accept': "application/json"}));
       final response = await dio.post(
-        'https://tokopaedi.arfani.my.id/api/recipes?page=1&title=&category_id=',
+        'https://tokopaedi.arfani.my.id/api/recipes',
         data: formData,
       );
 
-      // Check response
+      // Debug print
+      print('Full Response: ${response.data}');
+      print('Response Status Code: ${response.statusCode}');
+
+      // Cek response
       if (response.statusCode == 200 && response.data != null) {
-        // Extract image URL from response
-        final imageUrl = response.data['url'] as String;
-        return imageUrl;
+        // Ekstrak URL gambar
+        Navigator.pop(context);
       } else {
-        throw Exception('Failed to upload image: ${response.statusCode}');
+        print('Gagal mengunggah gambar. Status: ${response.statusCode}');
+        throw Exception('Gagal mengunggah gambar: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error uploading image: $e');
+      print('Error mengunggah gambar: $e');
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to upload image: $e')));
+      ).showSnackBar(SnackBar(content: Text('Gagal mengunggah gambar: $e')));
       return null;
     } finally {
       setState(() {
         _isUploadingImage = false;
       });
-    }
-  }
-
-  Future<void> _saveRecipe() async {
-    if (_formKey.currentState!.validate()) {
-      if (_selectedCategory == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Please select a category')));
-        return;
-      }
-
-      if (_imageFile == null && _imageUrl == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Please select an image')));
-        return;
-      }
-
-      // Get plain text from Quill editor
-      final description = _descriptionController.document.toPlainText().trim();
-
-      // Check if description is empty
-      if (description.isEmpty) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Deskripsi tidak boleh kosong')));
-        return;
-      }
-
-      setState(() {
-        _isLoading = true;
-      });
-
-      try {
-        // Upload image if a new one is selected
-        final uploadedImageUrl = await _uploadImage();
-        if (uploadedImageUrl == null && _imageUrl == null) {
-          throw Exception('Failed to get image URL');
-        }
-
-        final imageUrl = uploadedImageUrl ?? _imageUrl!;
-        final RecipeProvider recipeProvider = Provider.of<RecipeProvider>(
-          context,
-          listen: false,
-        );
-
-        if (_isEditMode && widget.recipe != null) {
-          // Update existing recipe
-          final updatedRecipe = RecipeModel(
-            id: widget.recipe!.id,
-            title: _titleController.text,
-            description: description,
-            image: imageUrl,
-            categoryId: _selectedCategory!.id,
-            category: _selectedCategory!,
-            createdAt: widget.recipe!.createdAt,
-            updatedAt: DateTime.now(),
-          );
-
-          final success = await recipeProvider.updateRecipe(updatedRecipe);
-          if (success) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Recipe updated successfully')),
-            );
-            Navigator.pop(context);
-          } else {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('Failed to update recipe')));
-          }
-        } else {
-          // Create new recipe
-          final newRecipe = RecipeModel(
-            id: 0,
-            title: _titleController.text,
-            description: description,
-            image: imageUrl,
-            categoryId: _selectedCategory!.id,
-            category: _selectedCategory!,
-            createdAt: DateTime.now(),
-            updatedAt: DateTime.now(),
-          );
-
-          final success = await recipeProvider.addRecipe(newRecipe);
-          if (success) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Recipe added successfully')),
-            );
-            Navigator.pop(context);
-          } else {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text('Failed to add recipe')));
-          }
-        }
-      } catch (e) {
-        print("Error saving recipe: $e");
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
-      } finally {
-        setState(() {
-          _isLoading = false;
-        });
-      }
     }
   }
 
@@ -415,7 +305,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // Title field with styling consistent with detail page
                             Text(
                               'Nama Resep',
                               style: TextStyle(
@@ -451,8 +340,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
                               },
                             ),
                             SizedBox(height: 16),
-
-                            // Category dropdown with styling consistent with detail page
                             Text(
                               'Kategori',
                               style: TextStyle(
@@ -498,8 +385,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                   },
                                 ),
                             SizedBox(height: 16),
-
-                            // Description field - REPLACED WITH FLUTTER QUILL
                             Text(
                               'Deskripsi',
                               style: TextStyle(
@@ -549,7 +434,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                       showSuperscript: false,
                                     ),
                                   ),
-                                  // Editor
                                   Expanded(
                                     child: Container(
                                       padding: const EdgeInsets.all(8),
@@ -567,13 +451,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
                               ),
                             ),
                             SizedBox(height: 24),
-
-                            // Save button with consistent styling
                             SizedBox(
                               width: double.infinity,
                               height: 50,
                               child: ElevatedButton(
-                                onPressed: _saveRecipe,
+                                onPressed: _uploadImage,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.blueGrey,
                                   foregroundColor: Colors.white,

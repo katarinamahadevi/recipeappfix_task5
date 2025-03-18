@@ -4,6 +4,8 @@ import 'package:recipeappfix_task5/models/recipe_models.dart';
 import 'package:recipeappfix_task5/services/recipe_service.dart';
 
 class RecipeProvider with ChangeNotifier {
+
+
   final RecipeService _recipeService = RecipeService();
   List<RecipeModel> _recipes = [];
   List<CategoryModel> _categories = [];
@@ -15,7 +17,7 @@ class RecipeProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isCategoriesLoading => _isCategoriesLoading;
 
-  Future<void> fetchRecipes({int page = 1}) async {
+  Future<void> fetchRecipes({int page = 1}) async { 
     if (_isLoading) return;
     _isLoading = true;
     notifyListeners();
@@ -24,7 +26,6 @@ class RecipeProvider with ChangeNotifier {
       final fetchedRecipes = await _recipeService.getAllRecipes(page: page);
       _recipes = fetchedRecipes;
 
-      // After fetching recipes, extract categories
       await fetchCategories();
     } catch (e) {
       print("Error fetching recipes: $e");
@@ -56,8 +57,7 @@ class RecipeProvider with ChangeNotifier {
     }
   }
 
-  // Add method to create a new recipe
-  Future<bool> addRecipe(RecipeModel recipe) async {
+  Future<bool> addRecipe(RecipeModel recipe) async { //methpd add recipe
     try {
       final newRecipe = await _recipeService.createRecipe(recipe);
       _recipes.add(newRecipe);
@@ -69,8 +69,7 @@ class RecipeProvider with ChangeNotifier {
     }
   }
 
-  // Add method to update an existing recipe
-  Future<bool> updateRecipe(RecipeModel recipe) async {
+  Future<bool> updateRecipe(RecipeModel recipe) async { //method update recipe
     try {
       final success = await _recipeService.updateRecipe(recipe);
       if (success) {
@@ -87,8 +86,7 @@ class RecipeProvider with ChangeNotifier {
     }
   }
 
-  // Add method to delete a recipe
-  Future<bool> deleteRecipe(int id) async {
+  Future<bool> deleteRecipe(int id) async { //method delete recipe
     try {
       final success = await _recipeService.deleteRecipe(id);
       if (success) {

@@ -11,7 +11,7 @@ class RecipeService {
     try {
       final response = await _dio.get("$baseUrl?page=$page");
       print("API Response: ${response.data}");
-      
+
       if (response.data is Map<String, dynamic> &&
           response.data.containsKey("data") &&
           response.data["data"] is Map<String, dynamic> &&
@@ -26,14 +26,14 @@ class RecipeService {
       throw Exception("Failed to load recipes: $e");
     }
   }
-  
+
   // Method to fetch categories using the recipe data
   // This extracts categories from recipe data we already have
   Future<List<CategoryModel>> getCategoriesFromRecipes() async {
     try {
       // Get recipes first
       final recipes = await getAllRecipes();
-      
+
       // Extract unique categories
       final Map<int, CategoryModel> uniqueCategories = {};
       for (var recipe in recipes) {
@@ -41,7 +41,7 @@ class RecipeService {
           uniqueCategories[recipe.category.id] = recipe.category;
         }
       }
-      
+
       print("Categories extracted from recipes: ${uniqueCategories.length}");
       return uniqueCategories.values.toList();
     } catch (e) {
@@ -54,7 +54,8 @@ class RecipeService {
   Future<RecipeModel> createRecipe(RecipeModel recipe) async {
     try {
       final response = await _dio.post(
-        baseUrl,
+        'https://tokopaedi.arfani.my.id/api/recipes',
+        options: Options(headers: {'Accept': 'application/json'}),
         data: {
           "title": recipe.title,
           "description": recipe.description,
@@ -62,7 +63,7 @@ class RecipeService {
           "category_id": recipe.categoryId,
         },
       );
-      
+
       return RecipeModel.fromJson(response.data['data']);
     } catch (e) {
       throw Exception("Failed to create recipe: $e");
