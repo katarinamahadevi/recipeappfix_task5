@@ -2,12 +2,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:recipeappfix_task5/controller/recipe_controller.dart';
 import 'package:recipeappfix_task5/models/category_model.dart';
 import 'package:recipeappfix_task5/models/recipe_models.dart';
-import 'package:recipeappfix_task5/services/recipe_service.dart';
 
 class AddRecipePage extends StatefulWidget {
   final RecipeModel? recipe; // Optional recipe for editing mode
@@ -20,7 +18,6 @@ class AddRecipePage extends StatefulWidget {
 class _AddRecipePageState extends State<AddRecipePage> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
-
   // Menggunakan QuillController untuk deskripsi
   late QuillController _descriptionController;
 
@@ -28,7 +25,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
   List<CategoryModel> _categories = [];
   bool _isLoading = false;
   bool _isEditMode = false;
-  bool _isUploadingImage = false;
 
   // Image picker
   final ImagePicker _picker = ImagePicker();
@@ -38,18 +34,27 @@ class _AddRecipePageState extends State<AddRecipePage> {
   @override
   void initState() {
     super.initState();
-
     // Initialize QuillController
     _descriptionController = QuillController.basic();
-
-    _loadCategories();
 
     // If recipe is provided, we're in edit mode
     if (widget.recipe != null) {
       _isEditMode = true;
       _titleController.text = widget.recipe!.title;
       _imageUrl = widget.recipe!.image;
+
+      // Set description content
+      final document = Document()..insert(0, widget.recipe!.description);
+      _descriptionController = QuillController(
+        document: document,
+        selection: const TextSelection.collapsed(offset: 0),
+      );
     }
+
+    // Call _loadCategories after initialization
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadCategories();
+    });
   }
 
   @override
@@ -60,63 +65,78 @@ class _AddRecipePageState extends State<AddRecipePage> {
   }
 
   Future<void> _loadCategories() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
     });
+
     try {
-      final RecipeService recipeService = RecipeService();
-      final categoriesData = await recipeService.getCategoriesFromRecipes();
+      final recipeProvider = Provider.of<RecipeProvider>(
+        context,
+        listen: false,
+      );
+
+      await recipeProvider.fetchCategories();
+
+      if (!mounted) return;
       setState(() {
-        _categories = categoriesData;
+        _categories = recipeProvider.categories;
+
         if (_isEditMode && widget.recipe != null) {
           _selectedCategory = _categories.firstWhere(
             (category) => category.id == widget.recipe!.categoryId,
-            orElse: () => _categories.isNotEmpty ? _categories.first : null!,
+            orElse: () => _categories.first,
           );
         } else if (_categories.isNotEmpty) {
           _selectedCategory = _categories.first;
         }
+
         _isLoading = false;
       });
+
       print("Categories loaded: ${_categories.length}");
-      if (_categories.isNotEmpty) {
-        print("First category: ${_categories.first.name}");
-      }
     } catch (e) {
-      print("Error in _loadCategories: $e");
-      setState(() {
-        _isLoading = false;
-        if (_categories.isEmpty) {
-          final defaultCategory = CategoryModel(
-            id: 1,
-            name: "Default Category",
-            createdAt: DateTime.now(),
-            updatedAt: DateTime.now(),
-          );
-          _categories = [defaultCategory];
-          _selectedCategory = defaultCategory;
-          ScaffoldMessenger.of(context).showSnackBar(
-            //warning
-            SnackBar(
-              content: Text(
-                'Using default category - could not load categories',
-              ),
+      print("Error loading categories: $e");
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+
+          // Fallback kategori default
+          _categories = [
+            CategoryModel(
+              id: 1,
+              name: "Default Category",
+              createdAt: DateTime.now(),
+              updatedAt: DateTime.now(),
             ),
-          );
-        }
-      });
+          ];
+          _selectedCategory = _categories.first;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Gagal memuat kategori. Menggunakan kategori default.',
+            ),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
   }
 
   Future<void> _pickImageFromGallery() async {
     try {
-      final XFile? pickedFile = await _picker.pickImage(
-        source: ImageSource.gallery,
-        imageQuality: 80,
+      // Use the RecipeProvider to pick image
+      final recipeProvider = Provider.of<RecipeProvider>(
+        context,
+        listen: false,
       );
+      final pickedFile = await recipeProvider.pickImageFromGallery(_picker);
+
       if (pickedFile != null) {
         setState(() {
-          _imageFile = File(pickedFile.path);
+          _imageFile = pickedFile;
           _imageUrl = null;
         });
       }
@@ -128,60 +148,54 @@ class _AddRecipePageState extends State<AddRecipePage> {
     }
   }
 
-  Future<String?> _uploadImage() async {
-    if (_imageFile == null) {
-      print('Tidak ada file gambar yang dipilih');
-      return _imageUrl;
-    }
-
-    setState(() {
-      _isUploadingImage = true;
-    });
-
-    try {
-      final formData = FormData.fromMap({
-        'title': _titleController.text,
-        'description': _descriptionController.document.toPlainText().trim(),
-        'category_id': _selectedCategory!.id.toString(),
-        'image': await MultipartFile.fromFile(
-          _imageFile!.path,
-          filename: 'image.jpg',
-        ),
-      });
-
-      final Dio dio = Dio(BaseOptions(headers: {'Accept': "application/json"}));
-      final response = await dio.post(
-        'https://tokopaedi.arfani.my.id/api/recipes',
-        data: formData,
+  Future<void> _saveRecipe() async {
+    if (_formKey.currentState!.validate()) {
+      final recipeProvider = Provider.of<RecipeProvider>(
+        context,
+        listen: false,
       );
 
-      // Debug print
-      print('Full Response: ${response.data}');
-      print('Response Status Code: ${response.statusCode}');
+      // Create recipe model with correct image path
+      final recipe = RecipeModel(
+        id: _isEditMode ? widget.recipe!.id : 0,
+        title: _titleController.text,
+        description: _descriptionController.document.toPlainText().trim(),
+        // Handle image path carefully
+        image:
+            _imageFile?.path ??
+            _imageUrl ??
+            '', // Use _imageUrl if no new image selected
+        categoryId: _selectedCategory!.id,
+        createdAt: _isEditMode ? widget.recipe!.createdAt : DateTime.now(),
+        updatedAt: DateTime.now(),
+        category: _selectedCategory!,
+      );
 
-      // Cek response
-      if (response.statusCode == 200 && response.data != null) {
-        // Ekstrak URL gambar
-        Navigator.pop(context);
-      } else {
-        print('Gagal mengunggah gambar. Status: ${response.statusCode}');
-        throw Exception('Gagal mengunggah gambar: ${response.statusCode}');
-      }
-    } catch (e) {
-      print('Error mengunggah gambar: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Gagal mengunggah gambar: $e')));
-      return null;
-    } finally {
-      setState(() {
-        _isUploadingImage = false;
+      // Upload/update recipe using the provider
+      await recipeProvider.uploadImage(
+        context: context,
+        formKey: _formKey,
+        imageFile: _imageFile,
+        recipe: recipe,
+        isEditMode: _isEditMode,
+      );
+
+      // Navigate back
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.pop(context);
+        }
       });
+      //
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Use listen: false in build method to avoid rebuild loops
+    // The UI will update based on local state variables instead
+    final recipeProvider = Provider.of<RecipeProvider>(context, listen: false);
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -196,7 +210,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
         elevation: 1,
       ),
       body:
-          _isLoading || _isUploadingImage
+          _isLoading || recipeProvider.isUploadingImage
               ? Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -204,7 +218,9 @@ class _AddRecipePageState extends State<AddRecipePage> {
                     CircularProgressIndicator(color: Colors.blueGrey),
                     SizedBox(height: 16),
                     Text(
-                      _isUploadingImage ? 'Uploading image...' : 'Loading...',
+                      recipeProvider.isUploadingImage
+                          ? 'Uploading image...'
+                          : 'Loading...',
                     ),
                   ],
                 ),
@@ -296,7 +312,6 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                 ),
                       ),
                     ),
-
                     // Form section with recipe details
                     Padding(
                       padding: const EdgeInsets.all(16.0),
@@ -354,7 +369,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                   "Tidak ada kategori tersedia",
                                   style: TextStyle(color: Colors.red),
                                 )
-                                : DropdownButtonFormField<CategoryModel>(
+                                : DropdownButtonFormField<CategoryModel>( 
                                   decoration: InputDecoration(
                                     hintText: 'Pilih Kategori',
                                     border: OutlineInputBorder(
@@ -383,6 +398,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                       _selectedCategory = newValue;
                                     });
                                   },
+                                  validator: (value) {
+    if (value == null) {
+      return 'Pilih kategori';
+    }
+    return null;}
                                 ),
                             SizedBox(height: 16),
                             Text(
@@ -455,7 +475,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                               width: double.infinity,
                               height: 50,
                               child: ElevatedButton(
-                                onPressed: _uploadImage,
+                                onPressed: _saveRecipe,
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.blueGrey,
                                   foregroundColor: Colors.white,

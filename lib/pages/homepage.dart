@@ -20,9 +20,11 @@ class _HomepageState extends State<Homepage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.microtask(() {
+    Provider.of<RecipeProvider>(context, listen: false).fetchCategories();
       Provider.of<RecipeProvider>(context, listen: false).fetchRecipes();
-    });
+  });
+ 
   }
 
   @override
@@ -83,57 +85,82 @@ class _HomepageState extends State<Homepage> {
                   );
                 }
                 return Container(
-                  padding: EdgeInsets.symmetric(horizontal: 40, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 10,
+                  ),
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
+                    color: Colors.white,
                     border: Border.all(color: Colors.grey.shade300),
+                    borderRadius: BorderRadius.circular(
+                      10,
+                    ), // Tambahkan border radius
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 8.0, left: 4.0),
+                        padding: const EdgeInsets.only(bottom: 8.0),
                         child: Text(
                           "Filter berdasarkan kategori:",
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                            fontSize: 16,
+                            color: Colors.black87,
                           ),
                         ),
                       ),
-                      Wrap(
-                        spacing: 8.0,
-                        runSpacing: 8.0,
-                        children: [
-                          FilterChip(
-                            label: Text("Semua"),
-                            selected: selectedCategory == null,
-                            onSelected: (selected) {
-                              setState(() {
-                                selectedCategory = null;
-                              });
-                            },
-                            backgroundColor: Colors.grey.shade200,
-                            selectedColor: Colors.blueGrey.shade200,
-                            checkmarkColor: Colors.white,
-                          ),
-
-                          // Add category filter options
-                          ...recipeProvider.categories.map((category) {
-                            return FilterChip(
-                              label: Text(category.name),
-                              selected: selectedCategory?.id == category.id,
+                      SingleChildScrollView(
+                        scrollDirection:
+                            Axis.horizontal, // Agar filter bisa di-scroll jika banyak kategori
+                        child: Wrap(
+                          spacing: 8.0,
+                          runSpacing: 8.0,
+                          children: [
+                            // Tombol "Semua" untuk reset filter
+                            FilterChip(
+                              label: const Text("Semua"),
+                              selected: selectedCategory == null,
                               onSelected: (selected) {
                                 setState(() {
-                                  selectedCategory = selected ? category : null;
+                                  selectedCategory = null;
                                 });
                               },
                               backgroundColor: Colors.grey.shade200,
-                              selectedColor: Colors.blueGrey.shade200,
+                              selectedColor: Colors.blueGrey,
                               checkmarkColor: Colors.white,
-                            );
-                          }).toList(),
-                        ],
+                              labelStyle: TextStyle(
+                                color:
+                                    selectedCategory == null
+                                        ? Colors.white
+                                        : Colors.black,
+                              ),
+                            ),
+
+                            // Tambahkan filter untuk setiap kategori yang tersedia
+                            ...recipeProvider.categories.map((category) {
+                              final isSelected =
+                                  selectedCategory?.id == category.id;
+                              return FilterChip(
+                                label: Text(category.name),
+                                selected: isSelected,
+                                onSelected: (selected) {
+                                  setState(() {
+                                    selectedCategory =
+                                        selected ? category : null;
+                                  });
+                                },
+                                backgroundColor: Colors.grey.shade200,
+                                selectedColor: Colors.blueGrey,
+                                checkmarkColor: Colors.white,
+                                labelStyle: TextStyle(
+                                  color:
+                                      isSelected ? Colors.white : Colors.black,
+                                ),
+                              );
+                            }).toList(),
+                          ],
+                        ),
                       ),
                     ],
                   ),

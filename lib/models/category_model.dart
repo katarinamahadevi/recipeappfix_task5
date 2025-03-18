@@ -5,23 +5,24 @@ class CategoryModel {
   final DateTime updatedAt;
 
   CategoryModel({
-    required this.id,
-    required this.name,
-    required this.createdAt,
-    required this.updatedAt,
+    required this.id, 
+    required this.name, 
+    required this.createdAt, 
+    required this.updatedAt
   });
 
-  factory CategoryModel.fromJson(Map<String, dynamic> json) => CategoryModel(
-    id: json["id"],
-    name: json["name"],
-    createdAt: DateTime.parse(json["created_at"]),
-    updatedAt: DateTime.parse(json["updated_at"]),
-  );
-
-  Map<String, dynamic> toJson() => {
-    "id": id,
-    "name": name,
-    "created_at": createdAt.toIso8601String(),
-    "updated_at": updatedAt.toIso8601String(),
-  };
+  factory CategoryModel.fromJson(Map<String, dynamic> json) {
+    return CategoryModel(
+      id: json['id'] is String 
+          ? int.parse(json['id']) 
+          : json['id'],
+      name: json['name'] ?? 'Unnamed Category',
+      createdAt: json['created_at'] != null 
+          ? DateTime.parse(json['created_at']) 
+          : DateTime.now(),
+      updatedAt: json['updated_at'] != null 
+          ? DateTime.parse(json['updated_at']) 
+          : DateTime.now(),
+    );
+  }
 }

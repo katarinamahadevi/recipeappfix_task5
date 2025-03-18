@@ -11,7 +11,6 @@ class RecipeModel {
   final CategoryModel category;
 
   RecipeModel({
-    
     required this.id,
     required this.title,
     required this.description,
@@ -41,6 +40,6 @@ class RecipeModel {
     "category_id": categoryId,
     "created_at": createdAt.toIso8601String(),
     "updated_at": updatedAt.toIso8601String(),
-    "category": category.toJson(),
+    // "category": category.toJson(),
   };
 }
