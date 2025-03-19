@@ -44,61 +44,120 @@ class RecipeService {
   }
 
   Future<List<CategoryModel>> getAllCategories() async {
-  try {
-    final response = await dio.get(categoriesUrl);
-    
-    // Karena response sudah dalam bentuk List
-    if (response.data is List) {
-      return (response.data as List)
-          .map<CategoryModel>((json) => CategoryModel.fromJson(json))
-          .toList();
+    try {
+      final response = await dio.get(categoriesUrl);
+
+      // Karena response sudah dalam bentuk List
+      if (response.data is List) {
+        return (response.data as List)
+            .map<CategoryModel>((json) => CategoryModel.fromJson(json))
+            .toList();
+      }
+
+      throw Exception("Invalid categories response format");
+    } catch (e) {
+      print("Error fetching categories: $e");
+      throw Exception("Failed to load categories: $e");
     }
-    
-    throw Exception("Invalid categories response format");
-  } catch (e) {
-    print("Error fetching categories: $e");
-    throw Exception("Failed to load categories: $e");
   }
-}
+
+  // Metode untuk mencari resep berdasarkan kata kunci
+  Future<List<RecipeModel>> searchRecipes(String query) async {
+    try {
+      final response = await dio.get(
+        "$baseUrl",
+        queryParameters: {'search': query},
+        options: Options(headers: {'Accept': 'application/json'}),
+      );
+
+      print("API Search Response: ${response.data}");
+
+      if (response.data is Map<String, dynamic> &&
+          response.data.containsKey("data") &&
+          response.data["data"] is Map<String, dynamic> &&
+          response.data["data"].containsKey("data")) {
+        List<dynamic> recipesJson = response.data["data"]["data"];
+        return recipesJson.map((json) => RecipeModel.fromJson(json)).toList();
+      } else if (response.data is Map<String, dynamic> &&
+          response.data.containsKey("data") &&
+          response.data["data"] is List) {
+        // Format alternatif jika API mengembalikan data langsung sebagai array
+        List<dynamic> recipesJson = response.data["data"];
+        return recipesJson.map((json) => RecipeModel.fromJson(json)).toList();
+      } else {
+        print("Format respons tidak dikenali: ${response.data}");
+        throw Exception("Invalid search response format");
+      }
+    } catch (e) {
+      print("Error searching recipes: $e");
+      throw Exception("Failed to search recipes: $e");
+    }
+  }
+
+  // Metode untuk mendapatkan resep berdasarkan kategori
+  Future<List<RecipeModel>> getRecipesByCategory(int categoryId) async {
+    try {
+      final response = await dio.get(
+        "$baseUrl",
+        queryParameters: {'category_id': categoryId},
+        options: Options(headers: {'Accept': 'application/json'}),
+      );
+
+      print("API Category Filter Response: ${response.data}");
+
+      if (response.data is Map<String, dynamic> &&
+          response.data.containsKey("data") &&
+          response.data["data"] is Map<String, dynamic> &&
+          response.data["data"].containsKey("data")) {
+        List<dynamic> recipesJson = response.data["data"]["data"];
+        return recipesJson.map((json) => RecipeModel.fromJson(json)).toList();
+      } else {
+        throw Exception("Invalid category filter response format");
+      }
+    } catch (e) {
+      print("Error filtering recipes by category: $e");
+      throw Exception("Failed to filter recipes by category: $e");
+    }
+  }
 
   // Add method to create a new recipe
-  Future<RecipeModel> createRecipe(RecipeModel recipe) async {
-    try {
-      final response = await dio.post(
-        'https://tokopaedi.arfani.my.id/api/recipes',
-        options: Options(headers: {'Accept': 'application/json'}),
-        data: {
-          "title": recipe.title,
-          "description": recipe.description,
-          "image": recipe.image,
-          "category_id": recipe.categoryId,
-        },
-      );
+  // Future<RecipeModel> createRecipe(RecipeModel recipe) async {
+  //   try {
+  //     final response = await dio.post(
+  //       'https://tokopaedi.arfani.my.id/api/recipes',
+  //       options: Options(headers: {'Accept': 'application/json'}),
+  //       data: {
+  //         "title": recipe.title,
+  //         "description": recipe.description,
+  //         "image": recipe.image,
+  //         "category_id": recipe.categoryId,
+  //       },
+  //     );
 
-      return RecipeModel.fromJson(response.data['data']);
-    } catch (e) {
-      throw Exception("Failed to create recipe: $e");
-    }
-  }
+  //     return RecipeModel.fromJson(response.data['data']);
+  //   } catch (e) {
+  //     throw Exception("Failed to create recipe: $e");
+  //   }
+  // }
 
   // Add method to update a recipe
-  Future<bool> updateRecipe(RecipeModel recipe) async {
-    try {
-      final response = await dio.post(
-        "$baseUrl/${recipe.id}/update", // Use this endpoint instead of "/recipes/${recipe.id}/update"
-        options: Options(headers: {'Accept': 'application/json'}),
-        data: {
-          "title": recipe.title,
-          "description": recipe.description,
-          "image": recipe.image,
-          "category_id": recipe.categoryId,
-        },
-      );
-      return response.statusCode == 200;
-    } catch (e) {
-      throw Exception("Failed to update recipe: $e");
-    }
-  }
+  // Future<bool> updateRecipe(RecipeModel recipe) async {
+  //   try {
+  //     final response = await dio.post(
+  //       "$baseUrl/${recipe.id}/update", // Use this endpoint instead of "/recipes/${recipe.id}/update"
+  //       options: Options(headers: {'Accept': 'application/json'}),
+  //       data: {
+  //         "title": recipe.title,
+  //         "description": recipe.description,
+  //         "image": recipe.image,
+  //         "category_id": recipe.categoryId,
+  //       },
+  //     );
+  //     return response.statusCode == 200;
+  //   } catch (e) {
+  //     throw Exception("Failed to update recipe: $e");
+  //   }
+  // }
 
   // Add method to delete a recipe
   Future<bool> deleteRecipe(int id) async {

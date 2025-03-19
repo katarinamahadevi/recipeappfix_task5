@@ -180,6 +180,8 @@ class _AddRecipePageState extends State<AddRecipePage> {
         isEditMode: _isEditMode,
       );
 
+      recipeProvider.fetchRecipes();
+
       // Navigate back
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -369,7 +371,7 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                   "Tidak ada kategori tersedia",
                                   style: TextStyle(color: Colors.red),
                                 )
-                                : DropdownButtonFormField<CategoryModel>( 
+                                : DropdownButtonFormField<CategoryModel>(
                                   decoration: InputDecoration(
                                     hintText: 'Pilih Kategori',
                                     border: OutlineInputBorder(
@@ -399,10 +401,11 @@ class _AddRecipePageState extends State<AddRecipePage> {
                                     });
                                   },
                                   validator: (value) {
-    if (value == null) {
-      return 'Pilih kategori';
-    }
-    return null;}
+                                    if (value == null) {
+                                      return 'Pilih kategori';
+                                    }
+                                    return null;
+                                  },
                                 ),
                             SizedBox(height: 16),
                             Text(

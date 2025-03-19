@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:recipeappfix_task5/controller/recipe_controller.dart';
 import 'package:recipeappfix_task5/models/category_model.dart';
+import 'package:recipeappfix_task5/models/recipe_models.dart';
 import 'package:recipeappfix_task5/pages/add_recipe_page.dart';
 import 'package:recipeappfix_task5/pages/detail_recipe_page.dart';
 
@@ -13,18 +14,20 @@ class Homepage extends StatefulWidget {
 }
 
 class _HomepageState extends State<Homepage> {
-  String searchQuery = '';
-  CategoryModel? selectedCategory;
   bool showFilterOptions = false;
+  TextEditingController searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-      Future.microtask(() {
-    Provider.of<RecipeProvider>(context, listen: false).fetchCategories();
-      Provider.of<RecipeProvider>(context, listen: false).fetchRecipes();
-  });
- 
+    Future.microtask(() {
+      final recipeProvider = Provider.of<RecipeProvider>(
+        context,
+        listen: false,
+      );
+      recipeProvider.fetchCategories();
+      recipeProvider.fetchRecipes();
+    });
   }
 
   @override
@@ -39,24 +42,40 @@ class _HomepageState extends State<Homepage> {
       ),
       body: Column(
         children: [
+          // Search Bar
           Padding(
             padding: const EdgeInsets.all(10.0),
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    onChanged: (value) {
-                      setState(() {
-                        searchQuery = value.toLowerCase();
-                      });
+                  child: Consumer<RecipeProvider>(
+                    builder: (context, provider, _) {
+                      return TextField(
+                        controller: searchController,
+                        onChanged: (value) {
+                          // Jika string kosong, tetap pertahankan kategori yang dipilih
+                          if (value.isEmpty) {
+                            if (provider.selectedCategory != null) {
+                              provider.getRecipesByCategoryFromApi(
+                                provider.selectedCategory!,
+                              );
+                            } else {
+                              provider.resetAndFetchAllRecipes();
+                            }
+                          } else if (value.length > 1) {
+                            // Cari dengan mempertahankan filter kategori yang aktif
+                            provider.searchRecipesFromApi(value.toLowerCase());
+                          }
+                        },
+                        decoration: InputDecoration(
+                          hintText: "Cari...",
+                          prefixIcon: Icon(Icons.search),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      );
                     },
-                    decoration: InputDecoration(
-                      hintText: "Cari...",
-                      prefixIcon: Icon(Icons.search),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
                   ),
                 ),
                 SizedBox(width: 10),
@@ -71,11 +90,13 @@ class _HomepageState extends State<Homepage> {
               ],
             ),
           ),
+
+          // Filter Categories
           if (showFilterOptions)
             Consumer<RecipeProvider>(
-              builder: (context, recipeProvider, _) {
+              builder: (context, provider, _) {
                 // Check if categories are loaded
-                if (recipeProvider.categories.isEmpty) {
+                if (provider.categories.isEmpty) {
                   return Padding(
                     padding: const EdgeInsets.all(8.0),
                     child: Text(
@@ -84,6 +105,7 @@ class _HomepageState extends State<Homepage> {
                     ),
                   );
                 }
+
                 return Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 20,
@@ -92,9 +114,7 @@ class _HomepageState extends State<Homepage> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(
-                      10,
-                    ), // Tambahkan border radius
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -111,44 +131,59 @@ class _HomepageState extends State<Homepage> {
                         ),
                       ),
                       SingleChildScrollView(
-                        scrollDirection:
-                            Axis.horizontal, // Agar filter bisa di-scroll jika banyak kategori
+                        scrollDirection: Axis.horizontal,
                         child: Wrap(
                           spacing: 8.0,
                           runSpacing: 8.0,
                           children: [
-                            // Tombol "Semua" untuk reset filter
+                            // Tombol "Semua" untuk reset filter kategori tapi tetap mempertahankan pencarian
                             FilterChip(
                               label: const Text("Semua"),
-                              selected: selectedCategory == null,
+                              selected: provider.selectedCategory == null,
                               onSelected: (selected) {
-                                setState(() {
-                                  selectedCategory = null;
-                                });
+                                if (selected) {
+                                  // Jika ada pencarian aktif, tampilkan semua hasil pencarian
+                                  if (searchController.text.isNotEmpty) {
+                                    provider
+                                        .showAllCategoriesWithCurrentSearch();
+                                  } else {
+                                    provider.resetAndFetchAllRecipes();
+                                  }
+                                }
                               },
                               backgroundColor: Colors.grey.shade200,
                               selectedColor: Colors.blueGrey,
                               checkmarkColor: Colors.white,
                               labelStyle: TextStyle(
                                 color:
-                                    selectedCategory == null
+                                    provider.selectedCategory == null
                                         ? Colors.white
                                         : Colors.black,
                               ),
                             ),
 
-                            // Tambahkan filter untuk setiap kategori yang tersedia
-                            ...recipeProvider.categories.map((category) {
+                            // Filter untuk setiap kategori
+                            ...provider.categories.map((category) {
                               final isSelected =
-                                  selectedCategory?.id == category.id;
+                                  provider.selectedCategory?.id == category.id;
                               return FilterChip(
                                 label: Text(category.name),
                                 selected: isSelected,
                                 onSelected: (selected) {
-                                  setState(() {
-                                    selectedCategory =
-                                        selected ? category : null;
-                                  });
+                                  if (selected) {
+                                    // Gunakan filter kategori dengan tetap mempertahankan pencarian
+                                    provider.getRecipesByCategoryFromApi(
+                                      category,
+                                    );
+                                  } else {
+                                    // Saat deselect, kembali ke semua kategori tapi tetap pertahankan pencarian
+                                    if (searchController.text.isNotEmpty) {
+                                      provider
+                                          .showAllCategoriesWithCurrentSearch();
+                                    } else {
+                                      provider.resetAndFetchAllRecipes();
+                                    }
+                                  }
                                 },
                                 backgroundColor: Colors.grey.shade200,
                                 selectedColor: Colors.blueGrey,
@@ -168,48 +203,33 @@ class _HomepageState extends State<Homepage> {
               },
             ),
 
-          // ListView
+          // Recipe List
           Expanded(
             child: Consumer<RecipeProvider>(
-              builder: (context, recipeProvider, _) {
-                if (recipeProvider.isLoading) {
+              builder: (context, provider, _) {
+                if (provider.isLoading) {
                   return Center(child: CircularProgressIndicator());
                 }
 
-                if (recipeProvider.recipes.isEmpty) {
-                  return Center(child: Text("Tidak ada resep yang ditemukan"));
-                }
-
-                // Filter recipes by search query and selected category
-                final filteredRecipes =
-                    recipeProvider.recipes.where((recipe) {
-                      // Filter by search query
-                      final matchesSearch = recipe.title.toLowerCase().contains(
-                        searchQuery,
-                      );
-
-                      // Filter by category
-                      final matchesCategory =
-                          selectedCategory == null ||
-                          recipe.categoryId == selectedCategory!.id;
-
-                      return matchesSearch && matchesCategory;
-                    }).toList();
-
-                if (filteredRecipes.isEmpty) {
+                if (provider.recipes.isEmpty) {
                   return Center(
                     child: Text(
-                      selectedCategory != null
-                          ? "Tidak ada resep yang cocok dengan kategori '${selectedCategory!.name}'"
-                          : "Tidak ada resep yang cocok dengan pencarian",
+                      provider.selectedCategory != null &&
+                              provider.searchQuery.isNotEmpty
+                          ? "Tidak ada hasil untuk '${provider.searchQuery}' dalam kategori '${provider.selectedCategory!.name}'"
+                          : provider.selectedCategory != null
+                          ? "Tidak ada resep dalam kategori '${provider.selectedCategory!.name}'"
+                          : provider.searchQuery.isNotEmpty
+                          ? "Tidak ada hasil untuk '${provider.searchQuery}'"
+                          : "Tidak ada resep yang tersedia",
                     ),
                   );
                 }
 
                 return ListView.builder(
-                  itemCount: filteredRecipes.length,
+                  itemCount: provider.recipes.length,
                   itemBuilder: (context, index) {
-                    final recipe = filteredRecipes[index];
+                    final recipe = provider.recipes[index];
                     return Container(
                       margin: EdgeInsets.all(10),
                       decoration: BoxDecoration(
@@ -224,7 +244,26 @@ class _HomepageState extends State<Homepage> {
                               builder:
                                   (context) => DetailRecipePage(recipe: recipe),
                             ),
-                          );
+                          ).then((_) {
+                            // Setelah kembali dari detail, refresh dengan mempertahankan pencarian dan kategori
+                            if (provider.searchQuery.isNotEmpty) {
+                              if (provider.selectedCategory != null) {
+                                provider.getRecipesByCategoryFromApi(
+                                  provider.selectedCategory!,
+                                );
+                              } else {
+                                provider.searchRecipesFromApi(
+                                  provider.searchQuery,
+                                );
+                              }
+                            } else if (provider.selectedCategory != null) {
+                              provider.getRecipesByCategoryFromApi(
+                                provider.selectedCategory!,
+                              );
+                            } else {
+                              provider.fetchRecipes();
+                            }
+                          });
                         },
                         leading: SizedBox(
                           width: 50,
@@ -301,7 +340,24 @@ class _HomepageState extends State<Homepage> {
             context,
             MaterialPageRoute(builder: (context) => AddRecipePage()),
           ).then((_) {
-            Provider.of<RecipeProvider>(context, listen: false).fetchRecipes();
+            // Setelah tambah resep, refresh dengan mempertahankan pencarian dan kategori
+            final provider = Provider.of<RecipeProvider>(
+              context,
+              listen: false,
+            );
+            if (provider.searchQuery.isNotEmpty) {
+              if (provider.selectedCategory != null) {
+                provider.getRecipesByCategoryFromApi(
+                  provider.selectedCategory!,
+                );
+              } else {
+                provider.searchRecipesFromApi(provider.searchQuery);
+              }
+            } else if (provider.selectedCategory != null) {
+              provider.getRecipesByCategoryFromApi(provider.selectedCategory!);
+            } else {
+              provider.fetchRecipes();
+            }
           });
         },
         icon: Icon(Icons.add, color: Colors.white),

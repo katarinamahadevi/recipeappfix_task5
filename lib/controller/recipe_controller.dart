@@ -4,10 +4,16 @@ import 'package:dio/dio.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:recipeappfix_task5/models/category_model.dart';
 import 'package:recipeappfix_task5/models/recipe_models.dart';
+import 'package:recipeappfix_task5/pages/homepage.dart';
 import 'package:recipeappfix_task5/services/recipe_service.dart';
 import 'package:recipeappfix_task5/main.dart';
 
 class RecipeProvider with ChangeNotifier {
+  String _searchQuery = '';
+  CategoryModel? _selectedCategory;
+  List<RecipeModel> _allRecipes = []; // Store all loaded recipes
+  String get searchQuery => _searchQuery;
+  CategoryModel? get selectedCategory => _selectedCategory;
   final RecipeService _recipeService = RecipeService();
   List<RecipeModel> _recipes = [];
   List<CategoryModel> _categories = [];
@@ -20,6 +26,103 @@ class RecipeProvider with ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get isCategoriesLoading => _isCategoriesLoading;
   bool get isUploadingImage => _isUploadingImage;
+
+  // Metode untuk mencari resep dari API
+  Future<void> searchRecipesFromApi(String query) async {
+    if (_isLoading) return;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      _searchQuery = query;
+      
+      // Jika query kosong, kembalikan semua resep
+      if (query.isEmpty) {
+        await fetchRecipes();
+        return;
+      }
+      
+      final searchedRecipes = await _recipeService.searchRecipes(query);
+      _allRecipes = searchedRecipes; // Simpan dalam allRecipes
+      
+      // Filter berdasarkan query
+      _recipes = searchedRecipes.where((recipe) {
+        return recipe.title.toLowerCase().contains(query.toLowerCase());
+      }).toList();
+      
+      // Jika ada kategori yang dipilih, terapkan filter kategori juga
+      if (_selectedCategory != null) {
+        _recipes = _recipes.where((recipe) {
+          return recipe.categoryId == _selectedCategory!.id;
+        }).toList();
+      }
+      
+      print("Hasil Filter Lokal: ${_recipes.map((e) => e.title).toList()}");
+    } catch (e) {
+      print("Error searching recipes from API: $e");
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Metode untuk mendapatkan resep berdasarkan kategori dari API
+  Future<void> getRecipesByCategoryFromApi(CategoryModel category) async {
+    if (_isLoading) return;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      _selectedCategory = category;
+      
+      // Jika tidak ada query pencarian, ambil langsung dari API
+      if (_searchQuery.isEmpty) {
+        final categoryRecipes = await _recipeService.getRecipesByCategory(category.id);
+        _recipes = categoryRecipes;
+        _allRecipes = categoryRecipes;
+      } else {
+        // Jika ada query pencarian, filter hasil pencarian berdasarkan kategori
+        // Pertama, periksa apakah sudah ada data pencarian
+        if (_allRecipes.isEmpty) {
+          // Jika belum ada, ambil data pencarian dulu
+          await searchRecipesFromApi(_searchQuery);
+        }
+        
+        // Filter berdasarkan kategori dari hasil pencarian yang sudah ada
+        _recipes = _allRecipes.where((recipe) {
+          return recipe.categoryId == category.id && 
+                 recipe.title.toLowerCase().contains(_searchQuery.toLowerCase());
+        }).toList();
+      }
+    } catch (e) {
+      print("Error filtering recipes by category from API: $e");
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // Metode untuk me-reset filter dan mendapatkan semua resep
+  Future<void> resetAndFetchAllRecipes() async {
+    _searchQuery = '';
+    _selectedCategory = null;
+    _allRecipes = [];
+
+    await fetchRecipes();
+  }
+
+  // Metode untuk mendapatkan semua resep yang memuat pencarian saat ini
+  Future<void> showAllCategoriesWithCurrentSearch() async {
+    _selectedCategory = null;
+    
+    if (_searchQuery.isNotEmpty) {
+      // Jika ada pencarian aktif, terapkan filter pencarian pada semua resep
+      await searchRecipesFromApi(_searchQuery);
+    } else {
+      // Jika tidak ada pencarian, tampilkan semua resep
+      await fetchRecipes();
+    }
+  }
 
   /// **🔹 Fetch Categories**
   Future<void> fetchCategories() async {
@@ -47,6 +150,29 @@ class RecipeProvider with ChangeNotifier {
     } finally {
       _isCategoriesLoading = false;
       notifyListeners();
+    }
+  }
+
+  /// **🔹 Fetch Recipes**
+  Future<void> fetchRecipes({int page = 1}) async {
+    if (_isLoading) return;
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final fetchedRecipes = await _recipeService.getAllRecipes(page: page);
+      _recipes = fetchedRecipes;
+      _allRecipes = fetchedRecipes; // Simpan juga di allRecipes
+      await fetchCategories(); // Pastikan kategori juga dimuat
+    } catch (e) {
+      print("Error fetching recipes: $e");
+      _recipes = [];
+      _allRecipes = [];
+    } finally {
+      if (navigatorKey.currentContext != null) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
@@ -78,7 +204,11 @@ class RecipeProvider with ChangeNotifier {
 
     if (imageFile == null && isEditMode && recipe.image.isNotEmpty) {
       updateRecipe(recipe);
-      Navigator.pop(context);
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => Homepage()),
+        (route) => false,
+      );
     }
 
     if (imageFile == null && !isEditMode) {
@@ -183,6 +313,7 @@ class RecipeProvider with ChangeNotifier {
       final success = await _recipeService.deleteRecipe(id);
       if (success) {
         _recipes.removeWhere((recipe) => recipe.id == id);
+        _allRecipes.removeWhere((recipe) => recipe.id == id);
         notifyListeners();
         if (navigatorKey.currentContext != null) {
           ScaffoldMessenger.of(navigatorKey.currentContext!).showSnackBar(
@@ -194,27 +325,6 @@ class RecipeProvider with ChangeNotifier {
     } catch (e) {
       print("Error deleting recipe: $e");
       return false;
-    }
-  }
-
-  /// **🔹 Fetch Recipes**
-  Future<void> fetchRecipes({int page = 1}) async {
-    if (_isLoading) return;
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      final fetchedRecipes = await _recipeService.getAllRecipes(page: page);
-      _recipes = fetchedRecipes;
-      await fetchCategories(); // Pastikan kategori juga dimuat
-    } catch (e) {
-      print("Error fetching recipes: $e");
-      _recipes = [];
-    } finally {
-      if (navigatorKey.currentContext != null) {
-        _isLoading = false;
-        notifyListeners();
-      }
     }
   }
 }
